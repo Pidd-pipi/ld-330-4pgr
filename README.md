@@ -27,9 +27,44 @@ docker compose down
 - 患者档案管理：录入姓名、性别、年龄、身份证号、手机号、过敏史、既往史，并支持姓名、身份证号、手机号检索。
 - 病历书写与模板：门诊/住院病历结构化字段，集成富文本编辑器，按患者时间轴展示。
 - 医嘱与处方管理：处方药品、规格、用法、频次、疗程和状态跟踪，支持打印预览入口。
-- 病历权限与审签：内置医生、护士、管理员角色示例，演示 JWT 登录和审签归档状态。
+- 病历权限与审签：内置医生、护士、管理员角色示例，JWT 登录与角色守卫，审签归档状态全程可查。
+- **归档病历处方留痕闭环**：病历归档即锁定处方并生成版本基线；医生调整必须发起修改申请并填写原因（原因为空、重复申请直接拒绝）；管理员批准后仅解锁该病历一次，医生保存新处方自动生成 JSONB 版本快照、消耗解锁并写审计日志；审批、驳回、解锁消耗均留痕，且各病历互不影响。
 - 病历检索与统计：提供患者、病历、处方数量和科室工作量统计接口。
-- 系统管理与基础数据：数据库初始化审计日志表，保留操作追踪能力。
+- 系统管理与基础数据：初始化审计日志表，管理员可在“修改审批”页查看申请与全量审计日志。
+
+### 归档病历处方修改流程
+
+```text
+医生归档病历 ──▶ 处方锁定 + 生成 v1 基线快照 + 审计日志
+                     │
+医生调整被拦截 ──▶ 发起修改申请（原因必填，重复申请拒绝）
+                     │
+管理员审批 ──┬─ 驳回：医生可补充原因后重新申请
+             └─ 批准：仅解锁该病历一次（不影响其他病历）
+                     │
+医生保存新处方 ──▶ 生成新版本快照 + 关联申请号 + 审计日志 + 解锁立即消耗
+                     │
+再次保存（无新批准）──▶ 直接拒绝
+```
+
+演示账号（与登录页一致）：医生 `doctor / doctor123`、护士 `nurse / nurse123`、管理员 `admin / admin123`。
+演示数据中 `EMR202606002（李明哲）` 自带一份已归档锁定病历、两条处方和 v1 基线快照，可直接走完整流程。
+
+### 新增接口（均需 `Authorization: Bearer <token>`）
+
+| 方法 | 路径 | 角色 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/records/:id/archive` | 医生/管理员 | 归档病历、锁定处方并生成基线快照 |
+| GET | `/api/records/:id` | 登录用户 | 病历详情、处方、锁定与解锁状态 |
+| POST | `/api/records/:id/prescriptions` | 医生 | 保存处方；归档病历须有“已批准未使用”的申请，成功后一次性消耗 |
+| GET | `/api/records/:id/prescription-versions` | 登录用户 | 处方版本快照列表 |
+| POST | `/api/modification-requests` | 医生 | 发起修改申请，body：`{ recordId, reason }` |
+| GET | `/api/modification-requests?status=` | 登录用户 | 申请列表（医生仅本人，管理员全部） |
+| POST | `/api/modification-requests/:id/approve` | 管理员 | 批准，该病历仅解锁一次 |
+| POST | `/api/modification-requests/:id/reject` | 管理员 | 驳回，驳回后允许重新申请 |
+| GET | `/api/audit-logs?limit=` | 管理员 | 全量审计日志 |
+
+已部署环境升级表结构可执行幂等迁移：`database/migration_archive_lock.sql`（全新部署由 `init.sql` 自动完成）。
 
 ## 本地开发方式
 
@@ -66,15 +101,17 @@ npm run dev
 .
 ├── backend/              # NestJS 后端
 │   ├── src/auth/         # 登录与 JWT
-│   ├── src/common/       # 常量、数据库、审计日志
-│   └── src/records/      # 患者档案与病历 API
+│   ├── src/common/       # 常量、数据库、审计日志、JWT 角色守卫
+│   ├── src/modifications/# 处方修改申请审批与审计查询
+│   └── src/records/      # 患者档案、病历、处方与版本快照 API
 ├── database/
-│   └── init.sql          # PostgreSQL 初始化脚本
+│   ├── init.sql          # PostgreSQL 初始化脚本
+│   └── migration_archive_lock.sql  # 老库增量迁移（幂等）
 ├── frontend/             # React 前端
-│   ├── src/api/          # API 请求
-│   ├── src/components/   # 通用组件
+│   ├── src/api/          # API 请求（自动携带 JWT）
+│   ├── src/components/   # 通用组件（处方面板、路由守卫）
 │   ├── src/constants/    # 前端常量
-│   ├── src/pages/        # 页面
+│   ├── src/pages/        # 登录、工作台、修改审批
 │   └── src/types/        # 类型定义
 ├── docker-compose.yml
 ├── .env.example

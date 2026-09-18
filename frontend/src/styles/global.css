@@ -35,3 +35,46 @@ body {
 .w-e-text-container {
   min-height: 220px;
 }
+
+/* 登录页 */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1677ff 0%, #0b3d91 100%);
+  padding: 16px;
+}
+
+.login-card {
+  width: 420px;
+  max-width: 100%;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+/* 时间轴病历选择 */
+.record-node {
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.record-node:hover {
+  background: #f0f6ff;
+  border-color: #bcd4ff;
+}
+
+.record-node-active {
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #e6f0ff;
+  border: 1px solid #1677ff;
+}
+
+.patient-row-active > td {
+  background: #e6f0ff !important;
+}
